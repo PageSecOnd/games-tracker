@@ -1,17 +1,23 @@
 {
   "name": "games-tracker",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
+  "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite",
-    "build": "vite build"
+    "build": "vite build",
+    "electron": "electron .",
+    "electron:dev": "concurrently \"vite\" \"wait-on tcp:5173 && electron .\""
   },
   "dependencies": {
     "vue": "^3.5.13"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.2.3",
-    "vite": "^6.3.5"
+    "concurrently": "^9.2.1",
+    "electron": "^33.2.1",
+    "vite": "^6.3.5",
+    "wait-on": "^8.0.3"
   }
 }

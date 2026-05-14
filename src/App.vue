@@ -1,171 +1,91 @@
 <template>
-  <div class="app" :data-theme="theme">
+  <div class="app">
     <aside class="nav-rail">
-      <button
-        v-for="item in navItems"
-        :key="item.key"
-        :class="['rail-btn', { active: currentPage === item.key }]"
-        :title="item.label"
-        @click="currentPage = item.key"
-      >
-        <span>{{ item.icon }}</span>
-      </button>
+      <button v-for="item in navItems" :key="item.key" :class="['rail-btn',{active:currentPage===item.key}]" @click="currentPage=item.key">{{ item.icon }}</button>
     </aside>
-
     <main class="main-layout">
       <header class="command-bar">
         <h1>{{ currentPageLabel }}</h1>
-        <div class="search-wrap">
-          <span>🔎</span>
-          <input v-model="query" placeholder="搜索游戏、标签或备注" />
-          <button v-if="query" class="ghost" @click="query = ''">清除</button>
-        </div>
-        <button class="primary">
-          <span v-if="syncing">⏳</span>
-          {{ currentPage === 'wishlist' ? '添加游戏' : syncing ? '同步中…' : '同步我的库' }}
-        </button>
+        <div class="search-wrap"><input v-model="query" placeholder="搜索游戏、标签或备注"/></div>
+        <button class="primary" @click="handlePrimaryAction" :disabled="syncing">{{ syncing ? '同步中…' : currentPage==='wishlist' ? '添加游戏' : '同步我的库' }}</button>
       </header>
-
-      <section class="content">
-        <div v-if="currentPage === 'sync'" class="panel">
-          <h2>同步中心</h2>
-          <div class="sync-item" v-for="task in syncTasks" :key="task.name">
-            <div>
-              <strong>{{ task.name }}</strong>
-              <p>{{ task.stage }}</p>
-            </div>
-            <div class="progress"><div :style="{ width: task.progress + '%' }"></div></div>
-            <button class="ghost">取消</button>
-          </div>
+      <section class="content" v-if="currentPage==='settings'">
+        <div class="panel settings">
+          <h3>账号</h3>
+          <label>Steam API Key<input v-model="settings.steamApiKey" placeholder="填写从 Steam 申请的 Web API Key"/></label>
+          <label>SteamID64<input v-model="settings.steamId" placeholder="例如 7656119xxxxxxxxxx"/></label>
+          <button class="primary" @click="saveSettingAction">保存并测试连接</button>
+          <p>说明：先在 https://steamcommunity.com/dev/apikey 申请 Key，再填写你的 SteamID64。</p>
         </div>
+      </section>
 
-        <div v-else-if="currentPage === 'settings'" class="panel settings">
-          <h2>设置</h2>
-          <div class="setting-group">
-            <h3>外观</h3>
-            <label>主题
-              <select v-model="theme">
-                <option value="system">跟随系统</option>
-                <option value="light">浅色</option>
-                <option value="dark">深色</option>
-              </select>
-            </label>
-            <label class="switch">
-              <input type="checkbox" v-model="showEnglish" /> 显示英文名（副标题）
-            </label>
-          </div>
-        </div>
-
-        <div v-else class="grid">
+      <section class="content" v-else>
+        <div class="grid">
           <article v-for="game in filteredGames" :key="game.id" class="card" @click="openDrawer(game)">
             <div class="left-icon">🎮</div>
             <div class="mid">
               <h3>{{ game.zhName || game.enName }}</h3>
-              <p v-if="showEnglish && game.zhName">{{ game.enName }}</p>
-              <small v-if="currentPage === 'library'">游玩：{{ game.playtime }} 小时 · 最近：{{ game.lastPlayed }}</small>
+              <small>游玩：{{ game.playtime }} 小时 · 最近：{{ game.lastPlayed }}</small>
             </div>
             <div class="right-ach">
               <strong>{{ game.ach?.done ?? '—' }} / {{ game.ach?.total ?? '—' }}</strong>
               <div class="progress"><div :style="{ width: (game.ach?.percent || 0) + '%' }"></div></div>
-              <small>{{ game.ach ? game.ach.percent + '%' : '未同步' }}</small>
-            </div>
-            <div class="chips">
-              <span class="chip state">{{ game.state }}</span>
-              <span class="chip" v-for="tag in game.tags.slice(0, 3)" :key="tag">{{ tag }}</span>
-              <span class="chip" v-if="game.tags.length > 3">+{{ game.tags.length - 3 }}</span>
+              <small>{{ game.ach?.percent ?? '未同步' }}</small>
             </div>
           </article>
         </div>
       </section>
     </main>
 
-    <div class="mask" v-if="selectedGame" @click="selectedGame = null"></div>
+    <div class="mask" v-if="selectedGame" @click="selectedGame=null"></div>
     <aside class="drawer" v-if="selectedGame">
-      <header>
-        <div>
-          <h3>{{ selectedGame.zhName || selectedGame.enName }}</h3>
-          <p>{{ selectedGame.ach?.done ?? '—' }} / {{ selectedGame.ach?.total ?? '—' }} · {{ selectedGame.ach?.percent ?? '—' }}%</p>
-        </div>
-        <button class="ghost" @click="selectedGame = null">关闭</button>
-      </header>
-      <nav class="segmented">
-        <button :class="{ active: drawerTab === 'overview' }" @click="drawerTab = 'overview'">概览</button>
-        <button :class="{ active: drawerTab === 'ach' }" @click="drawerTab = 'ach'">成就</button>
-      </nav>
-      <div class="drawer-content" v-if="drawerTab === 'overview'">
-        <section class="panel">
-          <h4>你的管理</h4>
-          <label>状态
-            <select v-model="selectedGame.state">
-              <option>想玩</option><option>在玩</option><option>已通关</option><option>搁置</option><option>已弃坑</option>
-            </select>
-          </label>
-          <label>标签
-            <input v-model="tagDraft" placeholder="输入标签后回车" @keydown.enter.prevent="addTag" />
-          </label>
-          <div class="chips"><span class="chip" v-for="tag in selectedGame.tags" :key="tag">{{ tag }}</span></div>
-          <label>备注
-            <textarea v-model="selectedGame.note" placeholder="例如：进度、计划、易错点、刷成就思路…"></textarea>
-          </label>
-        </section>
-      </div>
-      <div class="drawer-content" v-else>
-        <section class="panel">
-          <h4>成就</h4>
-          <div class="search-wrap"><input placeholder="搜索成就" /></div>
-          <p v-if="!selectedGame.ach">成就尚未同步。点击“刷新成就”以获取该游戏的成就列表与解锁状态。</p>
-          <ul v-else>
-            <li v-for="n in 8" :key="n">未解锁成就 {{ n }}</li>
-          </ul>
-        </section>
-      </div>
+      <h3>{{ selectedGame.zhName || selectedGame.enName }}</h3>
+      <p>{{ selectedGame.ach?.done ?? '—' }} / {{ selectedGame.ach?.total ?? '—' }}</p>
+      <label>状态<select v-model="selectedGame.state" @change="persistSelected"><option>想玩</option><option>在玩</option><option>已通关</option><option>搁置</option><option>已弃坑</option></select></label>
+      <label>标签<input v-model="tagDraft" @keydown.enter.prevent="addTag" placeholder="输入标签后回车"/></label>
+      <div class="chips"><span class="chip" v-for="tag in selectedGame.tags" :key="tag">{{tag}}</span></div>
+      <label>备注<textarea v-model="selectedGame.note" @blur="persistSelected"/></label>
+      <button class="primary" @click="refreshAchievement">刷新成就</button>
+      <button class="ghost" @click="openStore">打开 Steam 商店页</button>
     </aside>
   </div>
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { loadStore, openStorePage, saveMeta, saveSettings, syncAchievements, syncLibrary } from './services'
 
+const navItems = [{ key:'library',icon:'📚'},{key:'wishlist',icon:'⭐'},{key:'sync',icon:'🔄'},{key:'settings',icon:'⚙️'}]
 const currentPage = ref('library')
 const query = ref('')
 const syncing = ref(false)
-const showEnglish = ref(true)
-const theme = ref('system')
-const drawerTab = ref('overview')
+const games = ref([])
 const selectedGame = ref(null)
+const settings = ref({ steamApiKey:'', steamId:'' })
 const tagDraft = ref('')
 
-const navItems = [
-  { key: 'library', label: '游戏库', icon: '📚' },
-  { key: 'wishlist', label: '我的清单', icon: '⭐' },
-  { key: 'sync', label: '同步中心', icon: '🔄' },
-  { key: 'settings', label: '设置', icon: '⚙️' }
-]
+const currentPageLabel = computed(() => ({library:'游戏库',wishlist:'我的清单',sync:'同步中心',settings:'设置'})[currentPage.value])
+const filteredGames = computed(() => games.value.filter((g) => `${g.zhName} ${g.enName} ${g.tags?.join(' ')} ${g.note}`.toLowerCase().includes(query.value.toLowerCase())))
 
-const games = ref([
-  { id: 1, zhName: '空洞骑士', enName: 'Hollow Knight', playtime: 41, lastPlayed: '2026-05-12', state: '在玩', tags: ['高难度', '银河恶魔城'], note: '', ach: { done: 34, total: 63, percent: 54 } },
-  { id: 2, zhName: '哈迪斯', enName: 'Hades', playtime: 19, lastPlayed: '2026-05-10', state: '想玩', tags: ['肉鸽', '动作'], note: '', ach: null },
-  { id: 3, zhName: '', enName: 'Portal 2', playtime: 12, lastPlayed: '2026-05-01', state: '搁置', tags: ['解谜', '剧情', '合作', '经典'], note: '补双人', ach: { done: 20, total: 51, percent: 39 } }
-])
-
-const syncTasks = ref([
-  { name: '哈迪斯', stage: '下载图标', progress: 35 },
-  { name: '空洞骑士', stage: '写入本地数据', progress: 92 }
-])
-
-const currentPageLabel = computed(() => navItems.find((i) => i.key === currentPage.value)?.label ?? '')
-const filteredGames = computed(() => games.value.filter((g) => `${g.zhName} ${g.enName} ${g.tags.join(' ')} ${g.note}`.toLowerCase().includes(query.value.toLowerCase())))
-
-const openDrawer = (game) => {
-  selectedGame.value = game
-  drawerTab.value = 'overview'
+const hydrate = async () => {
+  const store = await loadStore()
+  games.value = store.games || []
+  settings.value = store.settings || settings.value
 }
 
-const addTag = () => {
-  const next = tagDraft.value.trim()
-  if (next && selectedGame.value && !selectedGame.value.tags.includes(next)) {
-    selectedGame.value.tags.push(next)
-  }
-  tagDraft.value = ''
+const handlePrimaryAction = async () => {
+  if (currentPage.value === 'wishlist') return
+  syncing.value = true
+  await syncLibrary()
+  await hydrate()
+  syncing.value = false
 }
+const saveSettingAction = async () => { await saveSettings(settings.value); await hydrate(); alert('设置已保存') }
+const openDrawer = (g) => { selectedGame.value = structuredClone(g); tagDraft.value='' }
+const persistSelected = async () => { await saveMeta(selectedGame.value); await hydrate() }
+const addTag = async () => { const t = tagDraft.value.trim(); if (t && !selectedGame.value.tags.includes(t)) selectedGame.value.tags.push(t); tagDraft.value=''; await persistSelected() }
+const refreshAchievement = async () => { syncing.value = true; await syncAchievements(selectedGame.value.id); await hydrate(); selectedGame.value = games.value.find((g) => g.id===selectedGame.value.id); syncing.value=false }
+const openStore = async () => openStorePage(selectedGame.value.appId)
+
+onMounted(hydrate)
 </script>
